@@ -17,4 +17,4 @@ Flash the code to your device and you should be good to go.
 	- Title/name
 	- Description
 	- List -> menu?
-	- # of patrons (write to characteristic)
+	- Number of visitors (write to characteristic)
