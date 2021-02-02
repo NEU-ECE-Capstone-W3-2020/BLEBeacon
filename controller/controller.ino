@@ -33,15 +33,15 @@ BLEService        beaconService = BLEService(service_uuid);
 BLECharacteristic beaconRxCharacteristic = BLECharacteristic(rx_characteristic_uuid);
 BLECharacteristic beaconTxCharacteristic = BLECharacteristic(tx_characteristic_uuid);
 
-BLEDis bledis;    // DIS (Device Information Service) helper class instance
-BLEBas blebas;    // BAS (Battery Service) helper class instance
+BLEDis bledis;    // device information service
+BLEBas blebas;    // battery service
 
 uint8_t  bps = 0;
 
 void setup()
 {
   Serial.begin(115200); // baud rate
-  while ( !Serial ) delay(10);   // for nrf52840 with native usb
+  while ( !Serial ) delay(10);
   
   Serial.println("------------------------------\n");
   Serial.println("----CAPSTONE BEACON DRIVER----");
@@ -75,29 +75,15 @@ void setup()
 
 void startAdvertising(void)
 {
-  // Advertising packet
+  // advertising packet
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
-
-  // Include HRM Service UUID
   Bluefruit.Advertising.addService(beaconService);
-
-  // Include Name
   Bluefruit.Advertising.addName();
-  
-  /* Start Advertising
-   * - Enable auto advertising if disconnected
-   * - Interval:  fast mode = 20 ms, slow mode = 152.5 ms
-   * - Timeout for fast mode is 30 seconds
-   * - Start(timeout) with timeout = 0 will advertise forever (until connected)
-   * 
-   * For recommended advertising interval
-   * https://developer.apple.com/library/content/qa/qa1931/_index.html   
-   */
   Bluefruit.Advertising.restartOnDisconnect(true);
-  Bluefruit.Advertising.setInterval(32, 244);    // in unit of 0.625 ms
-  Bluefruit.Advertising.setFastTimeout(30);      // number of seconds in fast mode
-  Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds  
+  Bluefruit.Advertising.setInterval(32, 244); 
+  Bluefruit.Advertising.setFastTimeout(30);
+  Bluefruit.Advertising.start(0);
 }
 
 void setupService(void)
@@ -110,9 +96,6 @@ void setupService(void)
   beaconRxCharacteristic.begin();
   beaconRxCharacteristic.write8(6); // initial count = 0?
 
-//  uint8_t hrmdata[2] = { 0b00000110, 0x40 }; // Set the characteristic to use 8-bit values, with the sensor connected and detected
-//  hrmc.write(hrmdata, 2);
-
   beaconTxCharacteristic.setProperties(CHR_PROPS_READ);
   beaconTxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   beaconTxCharacteristic.setFixedLen(1);
@@ -122,7 +105,7 @@ void setupService(void)
 
 void connect_callback(uint16_t conn_handle)
 {
-  // Get the reference to current connection
+  // current connection
   BLEConnection* connection = Bluefruit.Connection(conn_handle);
 
   char central_name[32] = { 0 };
@@ -149,6 +132,6 @@ void loop()
     Serial.println("CONNECTED");
   }
 
-  // Only send update once per second
+  // update once per second
   delay(1000);
 }

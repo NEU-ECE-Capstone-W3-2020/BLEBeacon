@@ -8,4 +8,13 @@ To get started, download the Arduino IDE and follow the steps [here](https://lea
 Flash the code to your device and you should be good to go.
 
 ## Services
-
+- Battery service
+	- Percentage characteristic
+- Device information service
+	- Device name
+	- Manufacturer name
+- Custom service
+	- Title/name
+	- Description
+	- List -> menu?
+	- # of patrons (write to characteristic)
