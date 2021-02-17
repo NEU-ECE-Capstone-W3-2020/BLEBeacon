@@ -59,7 +59,6 @@ void setup()
 
   Serial.println("Configuring the device information service");
   bledis.setManufacturer("GROUP W3");
-  bledis.setModel("DA BEACON");
   bledis.begin();
 
   Serial.println("Configuring the battery service");
@@ -90,17 +89,16 @@ void setupService(void)
 {
   beaconService.begin();
 
-  beaconRxCharacteristic.setProperties(CHR_PROPS_WRITE);
+  beaconRxCharacteristic.setProperties(CHR_PROPS_READ);
   beaconRxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  beaconRxCharacteristic.setFixedLen(1);
   beaconRxCharacteristic.begin();
-  beaconRxCharacteristic.write8(6); // initial count = 0?
+  beaconRxCharacteristic.write("Hello world");
 
-  beaconTxCharacteristic.setProperties(CHR_PROPS_READ);
+  beaconTxCharacteristic.setProperties(CHR_PROPS_WRITE);
   beaconTxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   beaconTxCharacteristic.setFixedLen(1);
   beaconTxCharacteristic.begin();
-  beaconTxCharacteristic.write8(2);
+  beaconTxCharacteristic.write8(0);
 }
 
 void connect_callback(uint16_t conn_handle)
