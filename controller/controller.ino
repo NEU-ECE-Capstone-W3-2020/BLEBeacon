@@ -1,21 +1,14 @@
 #include <bluefruit.h>
 
-/* Nordic UART Service: 6E400001-B5A3-F393-E0A9-E50E24DCCA9E
- * RX Characteristic:   6E400002-B5A3-F393-E0A9-E50E24DCCA9E
- * TX Characteristic:   6E400003-B5A3-F393-E0A9-E50E24DCCA9E
- */
+// BLE Service
+BLEDis  bledis;  // device information
+BLEUart bleuart; // uart over ble
+BLEBas  blebas;  // battery
 
-// must reverse each byte for *little endian* representation of data
 const uint8_t CUSTOM_SERVICE_UUID[] =
 {
   0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
   0x93, 0xF3, 0xA3, 0xB5, 0x01, 0x00, 0x40, 0x6E
-};
-
-const uint8_t CUSTOM_TX_UUID[] =
-{
-  0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
-  0x93, 0xF3, 0xA3, 0xB5, 0x02, 0x00, 0x40, 0x6E
 };
 
 const uint8_t CUSTOM_RX_UUID[] =
@@ -27,65 +20,54 @@ const uint8_t CUSTOM_RX_UUID[] =
 
 BLEUuid service_uuid = BLEUuid(CUSTOM_SERVICE_UUID);
 BLEUuid rx_characteristic_uuid = BLEUuid(CUSTOM_RX_UUID); // for writing data (beacon -> device)
-BLEUuid tx_characteristic_uuid = BLEUuid(CUSTOM_TX_UUID); // for reading data (device -> beacon)
 
 BLEService        beaconService = BLEService(service_uuid);
 BLECharacteristic beaconRxCharacteristic = BLECharacteristic(rx_characteristic_uuid);
-BLECharacteristic beaconTxCharacteristic = BLECharacteristic(tx_characteristic_uuid);
-
-BLEDis bledis;    // device information service
-BLEBas blebas;    // battery service
-
-uint8_t  bps = 0;
 
 void setup()
 {
-  Serial.begin(115200); // baud rate
-  while ( !Serial ) delay(10);
+  Serial.begin(115200);
+
+#if CFG_DEBUG
+  // Blocking wait for connection when debug mode is enabled via IDE
+  while ( !Serial ) yield();
+#endif
   
-  Serial.println("------------------------------\n");
-  Serial.println("----CAPSTONE BEACON DRIVER----");
-  Serial.println("------------------------------\n");
+  Serial.println("Bluefruit52 BLEUART Example");
+  Serial.println("---------------------------\n");
 
-  // init the nRF52
-  Serial.println("Initializing hardware...");
+  // Setup the BLE LED to be enabled on CONNECT
+  Bluefruit.autoConnLed(true);
+
+  // Config the peripheral connection with maximum bandwidth 
+  Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
+
   Bluefruit.begin();
-  Serial.println("Setting device name to 'BEACON'");
+  Bluefruit.setTxPower(4);
   Bluefruit.setName("BEACON");
-
-  // set connect/disconnect callback handlers
+  //Bluefruit.setName(getMcuUniqueID());
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
 
-  Serial.println("Configuring the device information service");
-  bledis.setManufacturer("GROUP W3");
+  // Configure and Start Device Information Service
+  bledis.setManufacturer("Group W3");
+  bledis.setModel("B01");
   bledis.begin();
 
-  Serial.println("Configuring the battery service");
+  // Configure and Start BLE Uart Service
+  bleuart.begin();
+
+  // Start BLE Battery Service
   blebas.begin();
   blebas.write(100);
 
-  Serial.println("Configuring the custom service");
-  setupService();
-
-  startAdvertising();
-  Serial.println("\nAdvertising!");
+  // Set up and start advertising
+  startAdv();
 }
 
-void startAdvertising(void)
-{
-  // advertising packet
-  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-  Bluefruit.Advertising.addTxPower();
-  Bluefruit.Advertising.addService(beaconService);
-  Bluefruit.Advertising.addName();
-  Bluefruit.Advertising.restartOnDisconnect(true);
-  Bluefruit.Advertising.setInterval(32, 244); 
-  Bluefruit.Advertising.setFastTimeout(30);
-  Bluefruit.Advertising.start(0);
-}
+String lastStr = "Hello world";
 
-void setupService(void)
+void startAdv(void)
 {
   beaconService.begin();
 
@@ -93,17 +75,70 @@ void setupService(void)
   beaconRxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   beaconRxCharacteristic.begin();
   beaconRxCharacteristic.write("Hello world");
+  
+  // Advertising packet
+  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
+  Bluefruit.Advertising.addTxPower();
 
-  beaconTxCharacteristic.setProperties(CHR_PROPS_WRITE);
-  beaconTxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  beaconTxCharacteristic.setFixedLen(1);
-  beaconTxCharacteristic.begin();
-  beaconTxCharacteristic.write8(0);
+  // Include bleuart 128-bit uuid
+  Bluefruit.Advertising.addService(bleuart);
+
+  Bluefruit.ScanResponse.addName();
+  
+  /* Start Advertising
+   * - Enable auto advertising if disconnected
+   * - Interval:  fast mode = 20 ms, slow mode = 152.5 ms
+   * - Timeout for fast mode is 30 seconds
+   * - Start(timeout) with timeout = 0 will advertise forever (until connected)
+   * 
+   * For recommended advertising interval
+   * https://developer.apple.com/library/content/qa/qa1931/_index.html   
+   */
+  Bluefruit.Advertising.restartOnDisconnect(true);
+  Bluefruit.Advertising.setInterval(32, 244);    // in unit of 0.625 ms
+  Bluefruit.Advertising.setFastTimeout(30);      // number of seconds in fast mode
+  Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds  
 }
 
+void loop()
+{
+  // Forward data from HW Serial to BLEUART
+  while (Serial.available())
+  {
+    delay(2);
+
+    uint8_t buf[64];
+    int count = Serial.readBytes(buf, sizeof(buf));
+    bleuart.write( buf, count );
+  }
+
+  // Forward from BLEUART to HW Serial
+  String curStr = "";
+  while ( bleuart.available() )
+  {
+    uint8_t ch;
+    ch = (uint8_t) bleuart.read();
+    Serial.write(ch);
+    curStr += (char)ch;
+  }
+  if (curStr != "") {
+    Serial.print("received string :");
+    Serial.println(curStr);
+    // when a new string is written to the beacon, update the advertisment data
+    if (curStr != lastStr) {
+      updateAdvertisedString(curStr);
+    }
+  }
+}
+
+void updateAdvertisedString(String curStr) {
+  beaconRxCharacteristic.write(curStr.c_str());
+}
+
+// callback invoked when central connects
 void connect_callback(uint16_t conn_handle)
 {
-  // current connection
+  // Get the reference to current connection
   BLEConnection* connection = Bluefruit.Connection(conn_handle);
 
   char central_name[32] = { 0 };
@@ -113,23 +148,16 @@ void connect_callback(uint16_t conn_handle)
   Serial.println(central_name);
 }
 
+/**
+ * Callback invoked when a connection is dropped
+ * @param conn_handle connection where this event happens
+ * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
+ */
 void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
   (void) conn_handle;
   (void) reason;
 
+  Serial.println();
   Serial.print("Disconnected, reason = 0x"); Serial.println(reason, HEX);
-  Serial.println("Advertising!");
-}
-
-void loop()
-{
-  digitalToggle(LED_RED);
-  
-  if ( Bluefruit.connected() ) {
-    Serial.println("CONNECTED");
-  }
-
-  // update once per second
-  delay(1000);
 }
