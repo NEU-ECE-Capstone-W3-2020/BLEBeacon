@@ -26,15 +26,7 @@ BLECharacteristic beaconRxCharacteristic = BLECharacteristic(rx_characteristic_u
 
 void setup()
 {
-  Serial.begin(115200);
-
-#if CFG_DEBUG
-  // Blocking wait for connection when debug mode is enabled via IDE
-  while ( !Serial ) yield();
-#endif
-  
-  Serial.println("Bluefruit52 BLEUART Example");
-  Serial.println("---------------------------\n");
+  Serial.begin(9600);
 
   // Setup the BLE LED to be enabled on CONNECT
   Bluefruit.autoConnLed(true);
@@ -45,7 +37,7 @@ void setup()
   Bluefruit.begin();
   Bluefruit.setTxPower(4);
   Bluefruit.setName("BEACON");
-  //Bluefruit.setName(getMcuUniqueID());
+
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
 
@@ -133,6 +125,7 @@ void loop()
 
 void updateAdvertisedString(String curStr) {
   beaconRxCharacteristic.write(curStr.c_str());
+  Serial.print(curStr.c_str());
 }
 
 // callback invoked when central connects
@@ -146,6 +139,8 @@ void connect_callback(uint16_t conn_handle)
 
   Serial.print("Connected to ");
   Serial.println(central_name);
+
+  
 }
 
 /**
