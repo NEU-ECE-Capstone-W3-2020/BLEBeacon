@@ -11,6 +11,12 @@ const uint8_t CUSTOM_SERVICE_UUID[] =
   0x93, 0xF3, 0xA3, 0xB5, 0x01, 0x00, 0x40, 0x6E
 };
 
+const uint8_t CUSTOM_TX_UUID[] =
+{
+  0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
+  0x93, 0xF3, 0xA3, 0xB5, 0x02, 0x00, 0x40, 0x6E
+};
+
 const uint8_t CUSTOM_RX_UUID[] =
 {
   0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
@@ -19,9 +25,11 @@ const uint8_t CUSTOM_RX_UUID[] =
 
 
 BLEUuid service_uuid = BLEUuid(CUSTOM_SERVICE_UUID);
-BLEUuid rx_characteristic_uuid = BLEUuid(CUSTOM_RX_UUID); // for writing data (beacon -> device)
+BLEUuid tx_characteristic_uuid = BLEUuid(CUSTOM_TX_UUID);
+BLEUuid rx_characteristic_uuid = BLEUuid(CUSTOM_RX_UUID);
 
 BLEService        beaconService = BLEService(service_uuid);
+BLECharacteristic beaconTxCharacteristic = BLECharacteristic(tx_characteristic_uuid);
 BLECharacteristic beaconRxCharacteristic = BLECharacteristic(rx_characteristic_uuid);
 
 void setup()
@@ -72,6 +80,10 @@ void startAdv(void)
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
 
+  beaconTxCharacteristic.setProperties(CHR_PROPS_WRITE);
+  beaconTxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
+  beaconTxCharacteristic.begin();
+
   // Include bleuart 128-bit uuid
   Bluefruit.Advertising.addService(bleuart);
 
@@ -95,13 +107,11 @@ void startAdv(void)
 void loop()
 {
   // Forward data from HW Serial to BLEUART
-  while (Serial.available())
+  if (Serial.available())
   {
-    delay(2);
-
-    uint8_t buf[64];
-    int count = Serial.readBytes(buf, sizeof(buf));
-    bleuart.write( buf, count );
+      uint8_t buf[64];
+      int count = Serial.readBytes(buf, sizeof(buf));
+      bleuart.write( buf, count );
   }
 
   // Forward from BLEUART to HW Serial
