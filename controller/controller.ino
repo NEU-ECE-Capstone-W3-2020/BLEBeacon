@@ -108,12 +108,16 @@ void startAdv(void)
 void loop()
 {
   // Forward data from HW Serial to BLEUART
-  if (Serial.available())
-  {
-      uint8_t buf[64];
-      int count = Serial.readBytes(buf, sizeof(buf));
-      bleuart.write( buf, count );
-  }
+  /* if (Serial.available()) */
+  /* { */
+  /*     uint8_t buf[64]; */
+  /*     int count = Serial.readBytes(buf, sizeof(buf)); */
+  /*     bleuart.write( buf, count ); */
+  /* } */
+    while(Serial.available()){
+        String data = Serial.readString();
+        updateAdvertisedString(data);
+    }
 
   // Forward from BLEUART to HW Serial
   String curStr = "";
