@@ -23,18 +23,18 @@ const uint8_t CUSTOM_RX_UUID[] =
   0x93, 0xF3, 0xA3, 0xB5, 0x03, 0x00, 0x40, 0x6E
 };
 
+BLEUuid service_uuid(CUSTOM_SERVICE_UUID);
+BLEUuid tx_characteristic_uuid(CUSTOM_TX_UUID);
+BLEUuid rx_characteristic_uuid(CUSTOM_RX_UUID);
 
-BLEUuid service_uuid = BLEUuid(CUSTOM_SERVICE_UUID);
-BLEUuid tx_characteristic_uuid = BLEUuid(CUSTOM_TX_UUID);
-BLEUuid rx_characteristic_uuid = BLEUuid(CUSTOM_RX_UUID);
-
-BLEService        beaconService = BLEService(service_uuid);
-BLECharacteristic beaconTxCharacteristic = BLECharacteristic(tx_characteristic_uuid);
-BLECharacteristic beaconRxCharacteristic = BLECharacteristic(rx_characteristic_uuid);
+BLEService        beaconService(service_uuid);
+BLECharacteristic beaconTxCharacteristic(tx_characteristic_uuid);
+BLECharacteristic beaconRxCharacteristic(rx_characteristic_uuid);
 
 void setup()
 {
   Serial.begin(9600);
+  while( !Serial ) delay(10);
 
   // Setup the BLE LED to be enabled on CONNECT
   Bluefruit.autoConnLed(true);
@@ -44,7 +44,7 @@ void setup()
 
   Bluefruit.begin();
   Bluefruit.setTxPower(4);
-  Bluefruit.setName("BEACON");
+  Bluefruit.setName("Capstone Beacon");
 
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
@@ -71,10 +71,11 @@ void startAdv(void)
 {
   beaconService.begin();
 
-  beaconRxCharacteristic.setProperties(CHR_PROPS_READ);
+  beaconRxCharacteristic.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
   beaconRxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
+  beaconRxCharacteristic.setCccdWriteCallback(cccd_update_callback);
   beaconRxCharacteristic.begin();
-  beaconRxCharacteristic.write("Hello world");
+  beaconRxCharacteristic.notify("Hello world");
   
   // Advertising packet
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
@@ -134,7 +135,7 @@ void loop()
 }
 
 void updateAdvertisedString(String curStr) {
-  beaconRxCharacteristic.write(curStr.c_str());
+  beaconRxCharacteristic.notify(curStr.c_str());
   Serial.print(curStr.c_str());
 }
 
@@ -161,8 +162,19 @@ void connect_callback(uint16_t conn_handle)
 void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
   (void) conn_handle;
-  (void) reason;
 
   Serial.println();
   Serial.print("Disconnected, reason = 0x"); Serial.println(reason, HEX);
+}
+
+void cccd_update_callback(uint16_t conn_handle, BLECharacteristic *chr, uint16_t value) {
+  (void) conn_handle;
+
+  Serial.print("CCCD Updated: ");
+  Serial.println(value);
+  if(chr->notifyEnabled()){
+    Serial.println("Notify Enabled");
+  } else {
+    Serial.println("Notify Disabled");
+  }
 }
