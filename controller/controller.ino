@@ -71,7 +71,7 @@ void startAdv(void)
 {
   beaconService.begin();
 
-  beaconRxCharacteristic.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY);
+  beaconRxCharacteristic.setProperties(CHR_PROPS_NOTIFY);
   beaconRxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   beaconRxCharacteristic.setCccdWriteCallback(cccd_update_callback);
   beaconRxCharacteristic.begin();
