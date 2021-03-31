@@ -11,26 +11,27 @@ const uint8_t CUSTOM_SERVICE_UUID[] =
   0x93, 0xF3, 0xA3, 0xB5, 0x01, 0x00, 0x40, 0x6E
 };
 
-const uint8_t CUSTOM_TX_UUID[] =
+const uint8_t CUSTOM_UUID[] =
 {
   0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
   0x93, 0xF3, 0xA3, 0xB5, 0x02, 0x00, 0x40, 0x6E
 };
-
+/*
 const uint8_t CUSTOM_RX_UUID[] =
 {
   0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
   0x93, 0xF3, 0xA3, 0xB5, 0x03, 0x00, 0x40, 0x6E
 };
+*/
 
+BLEUuid service_uuid(CUSTOM_SERVICE_UUID);
+BLEUuid characteristic_uuid(CUSTOM_UUID);
+/*BLEUuid rx_characteristic_uuid(CUSTOM_RX_UUID);*/
 
-BLEUuid service_uuid = BLEUuid(CUSTOM_SERVICE_UUID);
-BLEUuid tx_characteristic_uuid = BLEUuid(CUSTOM_TX_UUID);
-BLEUuid rx_characteristic_uuid = BLEUuid(CUSTOM_RX_UUID);
-
-BLEService        beaconService = BLEService(service_uuid);
-BLECharacteristic beaconTxCharacteristic = BLECharacteristic(tx_characteristic_uuid);
-BLECharacteristic beaconRxCharacteristic = BLECharacteristic(rx_characteristic_uuid);
+BLEService        beaconService(service_uuid);
+BLECharacteristic beaconCharacteristic(characteristic_uuid);
+/* BLECharacteristic beaconTxCharacteristic(tx_characteristic_uuid); */
+/* BLECharacteristic beaconRxCharacteristic(rx_characteristic_uuid); */
 
 void setup()
 {
@@ -71,18 +72,23 @@ void startAdv(void)
 {
   beaconService.begin();
 
-  beaconRxCharacteristic.setProperties(CHR_PROPS_READ);
-  beaconRxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  beaconRxCharacteristic.begin();
-  beaconRxCharacteristic.write("Hello world");
+  beaconCharacteristic.setProperties(CHR_PROPS_READ | CHR_PROPS_WRITE | CHR_PROPS_NOTIFY);
+  beaconCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
+  beaconCharacteristic.setCccdWriteCallback(cccd_update_callback);
+  beaconCharacteristic.begin();
+  beaconCharacteristic.notify("Hello world");
+  /* beaconRxCharacteristic.setProperties(CHR_PROPS_READ | CHR_PROPS_NOTIFY); */
+  /* beaconRxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS); */
+  /* beaconRxCharacteristic.begin(); */
+  /* beaconRxCharacteristic.write("Hello world"); */
   
   // Advertising packet
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
 
-  beaconTxCharacteristic.setProperties(CHR_PROPS_WRITE);
-  beaconTxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  beaconTxCharacteristic.begin();
+  /* beaconTxCharacteristic.setProperties(CHR_PROPS_WRITE); */
+  /* beaconTxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS); */
+  /* beaconTxCharacteristic.begin(); */
 
   // Include bleuart 128-bit uuid
   Bluefruit.Advertising.addService(bleuart);
@@ -134,7 +140,7 @@ void loop()
 }
 
 void updateAdvertisedString(String curStr) {
-  beaconRxCharacteristic.write(curStr.c_str());
+  beaconCharacteristic.notify(curStr.c_str());
   Serial.print(curStr.c_str());
 }
 
@@ -165,4 +171,14 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 
   Serial.println();
   Serial.print("Disconnected, reason = 0x"); Serial.println(reason, HEX);
+}
+
+void cccd_update_callback(uint16_t conn_handle, BLECharacteristic *chr, uint16_t value) {
+  Serial.print("CCCD Updated: ");
+  Serial.println(value);
+  if(chr->notifyEnabled()){
+    Serial.println("Notify Enabled");
+  } else {
+    Serial.println("Notify Disabled");
+  }
 }
