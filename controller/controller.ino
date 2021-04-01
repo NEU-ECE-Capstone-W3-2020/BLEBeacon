@@ -1,51 +1,31 @@
 #include <bluefruit.h>
+#include <vector>
+
+#define MAX_PRPH_CONNECTIONS 1
 
 // BLE Service
 BLEDis  bledis;  // device information
 BLEUart bleuart; // uart over ble
 BLEBas  blebas;  // battery
-
-const uint8_t CUSTOM_SERVICE_UUID[] =
-{
-  0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
-  0x93, 0xF3, 0xA3, 0xB5, 0x01, 0x00, 0x40, 0x6E
-};
-
-const uint8_t CUSTOM_TX_UUID[] =
-{
-  0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
-  0x93, 0xF3, 0xA3, 0xB5, 0x02, 0x00, 0x40, 0x6E
-};
-
-const uint8_t CUSTOM_RX_UUID[] =
-{
-  0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0,
-  0x93, 0xF3, 0xA3, 0xB5, 0x03, 0x00, 0x40, 0x6E
-};
-
-BLEUuid service_uuid(CUSTOM_SERVICE_UUID);
-BLEUuid tx_characteristic_uuid(CUSTOM_TX_UUID);
-BLEUuid rx_characteristic_uuid(CUSTOM_RX_UUID);
-
-BLEService        beaconService(service_uuid);
-BLECharacteristic beaconTxCharacteristic(tx_characteristic_uuid);
-BLECharacteristic beaconRxCharacteristic(rx_characteristic_uuid);
+uint8_t connection_cnt;
+uint16_t connections[MAX_PRPH_CONNECTIONS];
 
 void setup()
 {
   Serial.begin(9600);
   while( !Serial ) delay(10);
 
+  connection_cnt = 0;
+  memset(connections, 0, MAX_PRPH_CONNECTIONS * sizeof(uint16_t));
   // Setup the BLE LED to be enabled on CONNECT
   Bluefruit.autoConnLed(true);
 
   // Config the peripheral connection with maximum bandwidth 
-  Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
+  /* Bluefruit.configPrphBandwidth(BANDWIDTH_MAX); */
 
-  Bluefruit.begin();
+  Bluefruit.begin(MAX_PRPH_CONNECTIONS, 0);
   Bluefruit.setTxPower(4);
   Bluefruit.setName("Capstone Beacon");
-
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
 
@@ -54,12 +34,13 @@ void setup()
   bledis.setModel("B01");
   bledis.begin();
 
-  // Configure and Start BLE Uart Service
-  bleuart.begin();
-
   // Start BLE Battery Service
   blebas.begin();
   blebas.write(100);
+
+  // Configure and Start BLE Uart Service
+  bleuart.setNotifyCallback(notify_callback);
+  bleuart.begin();
 
   // Set up and start advertising
   startAdv();
@@ -69,21 +50,8 @@ String lastStr = "Hello world";
 
 void startAdv(void)
 {
-  beaconService.begin();
-
-  beaconRxCharacteristic.setProperties(CHR_PROPS_NOTIFY);
-  beaconRxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  beaconRxCharacteristic.setCccdWriteCallback(cccd_update_callback);
-  beaconRxCharacteristic.begin();
-  beaconRxCharacteristic.notify("Hello world");
-  
-  // Advertising packet
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
-
-  beaconTxCharacteristic.setProperties(CHR_PROPS_WRITE);
-  beaconTxCharacteristic.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
-  beaconTxCharacteristic.begin();
 
   // Include bleuart 128-bit uuid
   Bluefruit.Advertising.addService(bleuart);
@@ -139,8 +107,12 @@ void loop()
 }
 
 void updateAdvertisedString(String curStr) {
-  beaconRxCharacteristic.notify(curStr.c_str());
   Serial.print(curStr.c_str());
+  bleuart.write((const uint8_t *) curStr.c_str(), curStr.length());
+  for(uint8_t i = 0; i < connection_cnt; ++i)  {
+    bleuart.write(connections[i], (const uint8_t *) curStr.c_str(), curStr.length());
+  }
+  lastStr = curStr;
 }
 
 // callback invoked when central connects
@@ -150,12 +122,16 @@ void connect_callback(uint16_t conn_handle)
   BLEConnection* connection = Bluefruit.Connection(conn_handle);
 
   char central_name[32] = { 0 };
-  connection->getPeerName(central_name, sizeof(central_name));
+  connection->getPeerName(central_name, 32);
 
   Serial.print("Connected to ");
   Serial.println(central_name);
-
-  
+  connections[connection_cnt] = conn_handle;
+  ++connection_cnt;
+  if(connection_cnt < MAX_PRPH_CONNECTIONS) {
+    Serial.println("Keep Advertising");
+    Bluefruit.Advertising.start(0);
+  }
 }
 
 /**
@@ -165,20 +141,29 @@ void connect_callback(uint16_t conn_handle)
  */
 void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
-  (void) conn_handle;
-
   Serial.println();
   Serial.print("Disconnected, reason = 0x"); Serial.println(reason, HEX);
+
+  for(uint8_t i = 0; i < connection_cnt; ++i) {
+    if(connections[i] == conn_handle) {
+      for(uint8_t j = i; j < MAX_PRPH_CONNECTIONS - 1; ++j) {
+        connections[j] = connections[j + 1];
+      }
+      connections[MAX_PRPH_CONNECTIONS - 1] = 0;
+      break;
+    }
+  }
 }
 
-void cccd_update_callback(uint16_t conn_handle, BLECharacteristic *chr, uint16_t value) {
-  (void) conn_handle;
+void notify_callback(uint16_t conn_handle, bool enabled) {
+  BLEConnection* connection = Bluefruit.Connection(conn_handle);
 
-  Serial.print("CCCD Updated: ");
-  Serial.println(value);
-  if(chr->notifyEnabled()){
-    Serial.println("Notify Enabled");
+  char central_name[32] = { 0 };
+  connection->getPeerName(central_name, 32);
+  Serial.print(central_name);
+  if(enabled) {
+    Serial.println(" notifications enabled!");
   } else {
-    Serial.println("Notify Disabled");
+    Serial.println(" notifications disabled!");
   }
 }
