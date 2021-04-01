@@ -150,10 +150,10 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
         connections[j] = connections[j + 1];
       }
       connections[MAX_PRPH_CONNECTIONS - 1] = 0;
-      --connection_cnt;
       break;
     }
   }
+  --connection_cnt;
 }
 
 void notify_callback(uint16_t conn_handle, bool enabled) {
