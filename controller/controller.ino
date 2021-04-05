@@ -7,7 +7,8 @@
 #define DEBUG
 
 #define MAX_CNTRL_CONNECTIONS 1
-#define MAX_PRPH_CONNECTIONS  4
+#define MAX_PRPH_CONNECTIONS  2
+#define DEFAULT_STRING        "Hello World"
 
 // BLE Services
 BLEDis  bledis;  // device information
@@ -20,31 +21,25 @@ ConnectionWrapper cntrl_connections[MAX_CNTRL_CONNECTIONS];
 uint8_t prph_conn_cnt = 0;
 PeripheralConnection prph_connections[MAX_PRPH_CONNECTIONS];
 
-String lastStr = "Hello world";
+String lastStr;
 
 void setup()
 {
   Serial.begin(9600);
   while( !Serial ) delay(10);
 
-  // initialize + start timer
-  /* blinkTimer.begin(100, blink_timer_callback); */
-  /* blinkTimer.start(); */
-
   // Setup the BLE LED to be enabled on CONNECT
-  /* Bluefruit.autoConnLed(true); */
-  for(uint8_t id = 0; id < MAX_PRPH_CONNECTIONS; ++id) {
-    prph_connections[id].bleuart.setRxCallback(bleuart_rx_callback);
-  }
+  Bluefruit.autoConnLed(true);
 
   // Config the peripheral connection with maximum bandwidth 
-  Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
 
   Bluefruit.begin(MAX_CNTRL_CONNECTIONS, MAX_PRPH_CONNECTIONS);
   Bluefruit.setTxPower(4);
   Bluefruit.setName("Capstone Beacon");
+
   Bluefruit.Periph.setConnectCallback(cntrl_connect_callback);
   Bluefruit.Periph.setDisconnectCallback(cntrl_disconnect_callback);
+
   Bluefruit.Central.setConnectCallback(prph_connect_callback);
   Bluefruit.Central.setDisconnectCallback(prph_disconnect_callback);
 
@@ -61,9 +56,34 @@ void setup()
   bleuart.setNotifyCallback(notify_callback);
   bleuart.begin();
 
+  for(uint8_t id = 0; id < MAX_PRPH_CONNECTIONS; ++id) {
+    prph_connections[id].bleuart.begin();
+    prph_connections[id].bleuart.setRxCallback(bleuart_rx_callback);
+  }
+
   // Set up and start advertising and scanning
+  startScanning();
   startAdv();
-  //startScanning();
+  updateAdvertisedString(DEFAULT_STRING);
+}
+
+void startScanning(void){
+  /* Start Central Scanning
+   * - Enable auto scan if disconnected
+   * - Interval = 100 ms, window = 80 ms
+   * - Filter only accept bleuart service in advertising
+   * - Don't use active scan (used to retrieve the optional scan response adv packet)
+   * - Start(0) = will scan forever since no timeout is given
+   */
+  Bluefruit.Scanner.setRxCallback(scan_callback);
+  Bluefruit.Scanner.restartOnDisconnect(true);
+  Bluefruit.Scanner.setInterval(160, 80);       // in units of 0.625 ms
+  Bluefruit.Scanner.filterUuid(BLEUART_UUID_SERVICE);
+  Bluefruit.Scanner.useActiveScan(false);       // Don't request scan response data
+  Bluefruit.Scanner.start(0);                   // 0 = Don't stop scanning after n seconds
+#ifdef DEBUG
+  Serial.println("Started Scanning");
+#endif
 }
 
 void startAdv(void)
@@ -89,33 +109,22 @@ void startAdv(void)
   Bluefruit.Advertising.setInterval(32, 244);    // in unit of 0.625 ms
   Bluefruit.Advertising.setFastTimeout(30);      // number of seconds in fast mode
   Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds  
-}
-
-void startScanning(void){
-  /* Start Central Scanning
-   * - Enable auto scan if disconnected
-   * - Interval = 100 ms, window = 80 ms
-   * - Filter only accept bleuart service in advertising
-   * - Don't use active scan (used to retrieve the optional scan response adv packet)
-   * - Start(0) = will scan forever since no timeout is given
-   */
-  Bluefruit.Scanner.setRxCallback(scan_callback);
-  Bluefruit.Scanner.restartOnDisconnect(true);
-  Bluefruit.Scanner.setInterval(160, 80);       // in units of 0.625 ms
-  Bluefruit.Scanner.filterUuid(BLEUART_UUID_SERVICE);
-  Bluefruit.Scanner.useActiveScan(false);       // Don't request scan response data
-  Bluefruit.Scanner.start(0);                   // 0 = Don't stop scanning after n seconds
+#ifdef DEBUG
+  Serial.println("Started Advertising");
+#endif
 }
 
 void loop()
 {
   // Forward data from HW Serial to BLEUART
-  /* if (Serial.available()) */
-  /* { */
-  /*     uint8_t buf[64]; */
-  /*     int count = Serial.readBytes(buf, sizeof(buf)); */
-  /*     bleuart.write( buf, count ); */
-  /* } */
+  /*
+  if (Serial.available())
+  {
+      uint8_t buf[64];
+      int count = Serial.readBytes(buf, sizeof(buf));
+      bleuart.write( buf, count );
+  }
+  */
   while(Serial.available()){
     String data = Serial.readString();
     updateAdvertisedString(data);
@@ -160,8 +169,10 @@ void updateAdvertisedString(String curStr) {
  * Callback invoked when scanner picks up an advertising packet
  * @param report Structural advertising data
  */
-void scan_callback(ble_gap_evt_adv_report_t* report)
-{
+void scan_callback(ble_gap_evt_adv_report_t* report) {
+#ifdef DEBUG
+  Serial.println("Scan Callback");
+#endif
   // Since we configure the scanner with filterUuid()
   // Scan callback only invoked for device with bleuart service advertised  
   // Connect to the device with bleuart service in advertising packet
@@ -173,6 +184,9 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
  * @param conn_handle
  */
 void prph_connect_callback(uint16_t conn_handle) {
+#ifdef DEBUG
+  Serial.printf("Peripheral Connect Callback, Handle: %u\n", conn_handle);
+#endif
   // Find an available ID to use
   PeripheralConnection* peripheral = nullptr;
   for(uint8_t id = 0; id < MAX_PRPH_CONNECTIONS; ++id) {
@@ -221,8 +235,10 @@ void prph_connect_callback(uint16_t conn_handle) {
  * @param conn_handle
  * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
  */
-void prph_disconnect_callback(uint16_t conn_handle, uint8_t reason)
-{
+void prph_disconnect_callback(uint16_t conn_handle, uint8_t reason) {
+#ifdef DEBUG
+  Serial.printf("Peripheral Disconnect Callback, Handle: %u\n", conn_handle);
+#endif
   PeripheralConnection* peripheral = nullptr;
   for(uint8_t id = 0; id < MAX_PRPH_CONNECTIONS; ++id) {
     if(prph_connections[id].getConnHandle() == conn_handle) {
@@ -248,8 +264,10 @@ void prph_disconnect_callback(uint16_t conn_handle, uint8_t reason)
  * @param uart_svc Reference object to the service where the data 
  * arrived.
  */
-void bleuart_rx_callback(BLEClientUart& uart_svc)
-{
+void bleuart_rx_callback(BLEClientUart& uart_svc) {
+#ifdef DEBUG
+  Serial.println("Client BLE Uart RX Callback");
+#endif
   // uart_svc is peripheral.bleuart
   PeripheralConnection *peripheral = nullptr;
   for(uint8_t id = 0; id < MAX_PRPH_CONNECTIONS; ++id) {
@@ -275,10 +293,12 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 }
 
 // callback invoked when central connects
-void cntrl_connect_callback(uint16_t conn_handle)
-{
+void cntrl_connect_callback(uint16_t conn_handle) {
+#ifdef DEBUG
+  Serial.printf("Central Connect Callback, Handle: %u\n", conn_handle);
+#endif
   ConnectionWrapper *central = nullptr;
-  for(uint8_t id; id < MAX_CNTRL_CONNECTIONS; ++id) {
+  for(uint8_t id = 0; id < MAX_CNTRL_CONNECTIONS; ++id) {
       if(cntrl_connections[id].isInvalid()){
         central = &cntrl_connections[id];
         break;
@@ -287,7 +307,6 @@ void cntrl_connect_callback(uint16_t conn_handle)
   if(!central) return;
 
   central->setConnHandle(conn_handle);
-
   char central_name[32] = {0};
   Bluefruit.Connection(conn_handle)->getPeerName(central_name, 32);
   central->setName(central_name);
@@ -308,10 +327,12 @@ void cntrl_connect_callback(uint16_t conn_handle)
  * @param conn_handle connection where this event happens
  * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
  */
-void cntrl_disconnect_callback(uint16_t conn_handle, uint8_t reason)
-{
+void cntrl_disconnect_callback(uint16_t conn_handle, uint8_t reason) {
+#ifdef DEBUG
+  Serial.printf("Central Disconnect Callback, Handle: %u\n", conn_handle);
+#endif
   ConnectionWrapper *central = nullptr;
-  for(uint8_t id; id < MAX_CNTRL_CONNECTIONS; ++id) {
+  for(uint8_t id = 0; id < MAX_CNTRL_CONNECTIONS; ++id) {
       if(cntrl_connections[id].getConnHandle() == conn_handle){
         central = &cntrl_connections[id];
         break;
@@ -330,8 +351,11 @@ void cntrl_disconnect_callback(uint16_t conn_handle, uint8_t reason)
 }
 
 void notify_callback(uint16_t conn_handle, bool enabled) {
+#ifdef DEBUG
+  Serial.printf("Notify Callback, Handle: %u\n", conn_handle);
+#endif
   ConnectionWrapper *central = nullptr;
-  for(uint8_t id; id < MAX_CNTRL_CONNECTIONS; ++id) {
+  for(uint8_t id = 0; id < MAX_CNTRL_CONNECTIONS; ++id) {
       if(cntrl_connections[id].getConnHandle() == conn_handle){
         central = &cntrl_connections[id];
         break;
